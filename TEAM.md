@@ -1,6 +1,6 @@
 # Team Information
 
-**Course:** _[fill your course code and name]_
+**Course:** Artificial Intelligence - Ariadna Prat
 
 **Semester:** Semester 2, 2020
 
