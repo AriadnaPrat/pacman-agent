@@ -1,4 +1,18 @@
-# my_team.py
+# baseline_team.py
+# ---------------
+# Licensing Information:  You are free to use or extend these projects for
+# educational purposes provided that (1) you do not distribute or publish
+# solutions, (2) you retain this notice, and (3) you provide clear
+# attribution to UC Berkeley, including a link to http://ai.berkeley.edu.
+# 
+# Attribution Information: The Pacman AI projects were developed at UC Berkeley.
+# The core projects and autograders were primarily created by John DeNero
+# (denero@cs.berkeley.edu) and Dan Klein (klein@cs.berkeley.edu).
+# Student side autograding was added by Brad Miller, Nick Hay, and
+# Pieter Abbeel (pabbeel@cs.berkeley.edu).
+
+
+# baseline_team.py
 # ---------------
 # Licensing Information: Please do not distribute or publish solutions to this
 # project. You are free to use and extend these projects for educational
@@ -7,12 +21,37 @@
 # For more info, see http://inst.eecs.berkeley.edu/~cs188/sp09/pacman.html
 
 import random
-import contest.util as util
+import util
 
-from contest.capture_agents import CaptureAgent
-from contest.game import Directions
-from contest.util import nearest_point
+from capture_agents import CaptureAgent
+from game import Directions
+from util import nearest_point
 
+import math
+
+class Node:
+    def __init__(self, state, index, parent=None, action=None):
+        self.state = state
+        self.index = index
+        self.parent = parent
+        self.action = action
+        self.children = []
+        self.visits = 0
+        self.value = 0
+        self.untried_actions = state.get_legal_actions(index)
+
+    def is_terminal(self):
+        return len(self.state.get_legal_actions(self.index)) == 0
+
+    def is_fully_expanded(self):
+        return len(self.untried_actions) == 0
+
+    def add_child(self, child):
+        self.children.append(child)
+        self.untried_actions.remove(child.action)
+
+    def best_child(self, exploration_weight=1.0):
+        return max(self.children, key=lambda c: c.value / c.visits + exploration_weight * math.sqrt(math.log(self.visits) / c.visits))
 
 #################
 # Team creation #
@@ -29,7 +68,7 @@ def create_team(first_index, second_index, is_red,
     As a potentially helpful development aid, this function can take
     additional string-valued keyword arguments ("first" and "second" are
     such arguments in the case of this function), which will come from
-    the --red_opts and --blue_opts command-line arguments to capture.py.
+    the --redOpts and --blueOpts command-line arguments to capture.py.
     For the nightly contest, however, your team will be created without
     any extra arguments, so you should make sure that the default
     behavior is what you want for the nightly contest.
@@ -40,19 +79,18 @@ def create_team(first_index, second_index, is_red,
 ##########
 # Agents #
 ##########
-
 class ReflexCaptureAgent(CaptureAgent):
     """
-    A base class for reflex agents that choose score-maximizing actions
+    A base class for reflex agents that choose score-maximizing actions.
     """
 
-    def __init__(self, index, time_for_computing=.1):
-        super().__init__(index, time_for_computing)
+    def __init__(self, index):
+        super().__init__(index)
         self.start = None
 
     def register_initial_state(self, game_state):
         self.start = game_state.get_agent_position(self.index)
-        CaptureAgent.register_initial_state(self, game_state)
+        super().register_initial_state(game_state)
 
     def choose_action(self, game_state):
         """
@@ -85,40 +123,23 @@ class ReflexCaptureAgent(CaptureAgent):
         return random.choice(best_actions)
 
     def get_successor(self, game_state, action):
-        """
-        Finds the next successor which is a grid position (location tuple).
-        """
         successor = game_state.generate_successor(self.index, action)
         pos = successor.get_agent_state(self.index).get_position()
         if pos != nearest_point(pos):
-            # Only half a grid position was covered
             return successor.generate_successor(self.index, action)
         else:
             return successor
 
     def evaluate(self, game_state, action):
-        """
-        Computes a linear combination of features and feature weights
-        """
         features = self.get_features(game_state, action)
         weights = self.get_weights(game_state, action)
         return features * weights
 
-    def get_features(self, game_state, action):
-        """
-        Returns a counter of features for the state
-        """
-        features = util.Counter()
-        successor = self.get_successor(game_state, action)
-        features['successor_score'] = self.get_score(successor)
-        return features
+    def get_features(self, game_state, action, food_left):
+        return util.Counter()
 
     def get_weights(self, game_state, action):
-        """
-        Normally, weights do not depend on the game state.  They can be either
-        a counter or a dictionary.
-        """
-        return {'successor_score': 1.0}
+        return {}
 
 
 class OffensiveReflexAgent(ReflexCaptureAgent):
@@ -127,8 +148,46 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
   we give you to get an idea of what an offensive agent might look like,
   but it is by no means the best or only way to build an offensive agent.
   """
+    def choose_action(self, game_state):
+        """
+        Picks among the actions with the highest Q(s,a).
+        """
+        actions = game_state.get_legal_actions(self.index)
+        food_left = len(self.get_food(game_state).as_list())
+       
+        # You can profile your evaluation time by uncommenting these lines
+        # start = time.time()
+        values = [self.evaluate(game_state, a, food_left) for a in actions]
+        # print 'eval time for agent %d: %.4f' % (self.index, time.time() - start)
 
-    def get_features(self, game_state, action):
+        max_value = max(values)
+        best_actions = [a for a, v in zip(actions, values) if v == max_value]
+
+    
+        if food_left<= 2:
+            best_dist = 9999
+            best_action = None
+            for action in actions:
+                successor = self.get_successor(game_state, action)
+                pos2 = successor.get_agent_position(self.index)
+                dist = self.get_maze_distance(self.start, pos2)
+                if dist < best_dist:
+                    best_action = action
+                    best_dist = dist
+            return best_action
+
+        return random.choice(best_actions)
+    
+    def evaluate(self, game_state, action, food_left):
+        """
+        Computes a linear combination of features and feature weights
+        """
+        features = self.get_features(game_state, action, food_left)
+        weights = self.get_weights(game_state, action, food_left)
+        return features * weights
+
+
+    def get_features(self, game_state, action, food_left):
         features = util.Counter()
         successor = self.get_successor(game_state, action)
         food_list = self.get_food(successor).as_list()
@@ -140,44 +199,163 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
             my_pos = successor.get_agent_state(self.index).get_position()
             min_distance = min([self.get_maze_distance(my_pos, food) for food in food_list])
             features['distance_to_food'] = min_distance
+            ###########
+           
+            ###########
+            my_state = successor.get_agent_state(self.index)
+            my_pos = my_state.get_position()
+            if food_left <= 19:
+                
+         #       print("\n  1  food_left=", food_left, "_old=",self.food_left_old)
+                features = util.Counter()
+                successor = self.get_successor(game_state, action)
+
+                # Computes distance to invaders we can see
+                enemies = [successor.get_agent_state(i) for i in self.get_opponents(successor)]
+                invaders = [a for a in enemies if a.is_pacman and a.get_position() is not None]
+                features['num_invaders'] = len(invaders)
+                if len(invaders) > 0:
+                    dists = [self.get_maze_distance(my_pos, a.get_position()) for a in invaders]
+                    features['invader_distance'] = min(dists)
+                
+                if action == Directions.STOP: 
+                    features['stop'] = 1
+                rev = Directions.REVERSE[game_state.get_agent_state(self.index).configuration.direction]
+                print("\n  1.1  action=", action)
+                if action == rev: 
+                    features['reverse'] = 1
+                    print("\n  1.2  action=", action)
+
         return features
 
-    def get_weights(self, game_state, action):
+    def get_weights(self, game_state, action, food_left):
+        if food_left<= 19:
+        #    print("\n  2  food_left=", food_left, "_old=",self.food_left_old)
+            return {'num_invaders': -1000, 'on_defense': 100, 'invader_distance': -10, 'stop': -100, 'reverse': -2}
+        
         return {'successor_score': 100, 'distance_to_food': -1}
 
-
-class DefensiveReflexAgent(ReflexCaptureAgent):
+#alpha-beta no funciona bien
+class DefensiveReflexAgent(CaptureAgent):
     """
-    A reflex agent that keeps its side Pacman-free. Again,
-    this is to give you an idea of what a defensive agent
-    could be like.  It is not the best or only way to make
-    such an agent.
+    A reflex agent that keeps its side Pacman-free using Alpha-Beta pruning.
     """
 
-    def get_features(self, game_state, action):
+    def __init__(self, index, time_for_computing=.1):
+        super().__init__(index, time_for_computing)
+        self.previous_positions = []  # Asegúrate de definir el atributo
+        self.target_food = None
+        self.start = None
+
+    def register_initial_state(self, game_state):
+        self.start = game_state.get_agent_position(self.index)
+        CaptureAgent.register_initial_state(self, game_state)
+
+    def choose_action(self, game_state):
+        """
+        Selecciona la mejor acción usando una combinación de heurísticas.
+        """
+        actions = game_state.get_legal_actions(self.index)
+        
+        # Si no hay acciones legales, devuelve STOP
+        if not actions:
+            return Directions.STOP
+
+        # Evita quedarse quieto
+        if Directions.STOP in actions:
+            actions.remove(Directions.STOP)
+
+        # Generar sucesores para cada acción
+        successors = []
+        for action in actions:
+            try:
+                successor = self.get_successor(game_state, action)
+                successors.append((action, successor))
+            except Exception as e:
+                print(f"Error al generar sucesor para la acción {action}: {e}")
+                continue  # Si ocurre un error, omite esta acción
+
+        # Evita repetir movimientos para no quedarse atascado
+        current_pos = game_state.get_agent_state(self.index).get_position()
+        self.previous_positions.append(current_pos)
+        if len(self.previous_positions) > 6:
+            self.previous_positions.pop(0)
+
+        # Evaluar las acciones y elegir la mejor
+        best_action = None
+        best_value = -float('inf')
+        for action, successor in successors:
+            value = self.evaluate(successor, action)  # Aquí es donde se usa evaluate
+            next_pos = successor.get_agent_state(self.index).get_position()
+            if next_pos in self.previous_positions:
+                value -= 50  # Penaliza quedarse en un ciclo
+            if value > best_value:
+                best_value = value
+                best_action = action
+
+        return best_action
+
+    def evaluate(self, game_state, action):
+        """
+        Evalúa una acción combinando características y pesos.
+        Esta es la implementación del método evaluate para el agente defensivo.
+        """
+        features = self.get_features(game_state)
+        weights = self.get_weights()
+        return features * weights
+
+    def get_features(self, game_state):
+        """
+        Define las características relevantes para el agente defensivo.
+        """
         features = util.Counter()
-        successor = self.get_successor(game_state, action)
-
-        my_state = successor.get_agent_state(self.index)
+        my_state = game_state.get_agent_state(self.index)
         my_pos = my_state.get_position()
 
-        # Computes whether we're on defense (1) or offense (0)
-        features['on_defense'] = 1
-        if my_state.is_pacman: features['on_defense'] = 0
+        # Característica: el agente está en defensa
+        features['on_defense'] = 1 if not my_state.is_pacman else 0
 
-        # Computes distance to invaders we can see
-        enemies = [successor.get_agent_state(i) for i in self.get_opponents(successor)]
+        # Característica: número de invasores
+        enemies = [game_state.get_agent_state(i) for i in self.get_opponents(game_state)]
         invaders = [a for a in enemies if a.is_pacman and a.get_position() is not None]
         features['num_invaders'] = len(invaders)
+
+        # Característica: distancia a los invasores
         if len(invaders) > 0:
             dists = [self.get_maze_distance(my_pos, a.get_position()) for a in invaders]
             features['invader_distance'] = min(dists)
 
-        if action == Directions.STOP: features['stop'] = 1
+        # Penaliza detenerse
+        if game_state.get_legal_actions(self.index):
+            features['stop'] = 1
+
+        # Penaliza si el agente invierte la dirección
         rev = Directions.REVERSE[game_state.get_agent_state(self.index).configuration.direction]
-        if action == rev: features['reverse'] = 1
+        if game_state.get_agent_state(self.index).configuration.direction == rev:
+            features['reverse'] = 1
 
         return features
 
-    def get_weights(self, game_state, action):
-        return {'num_invaders': -1000, 'on_defense': 100, 'invader_distance': -10, 'stop': -100, 'reverse': -2}
+    def get_weights(self):
+        """
+        Asigna pesos a las características.
+        """
+        return {
+            'num_invaders': -1000,  # Penaliza los invasores
+            'on_defense': 100,      # Prefiere estar en defensa
+            'invader_distance': -10,  # Prefiere estar lejos de los invasores
+            'stop': -100,            # Penaliza detenerse
+            'reverse': -2            # Penaliza invertir la dirección
+        }
+
+    def get_successor(self, game_state, action):
+        """
+        Genera el estado sucesor después de realizar una acción.
+        """
+        successor = game_state.generate_successor(self.index, action)
+        pos = successor.get_agent_state(self.index).get_position()
+        if pos != nearest_point(pos):
+            # Si no está en un punto exacto de la cuadrícula, intenta generar otro sucesor
+            return successor.generate_successor(self.index, action)
+        else:
+            return successor
