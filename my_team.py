@@ -197,7 +197,7 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
         
         return {'successor_score': 100, 'distance_to_food': -1}
 
-#alpha-beta no funciona bien
+
 class DefensiveReflexAgent(CaptureAgent):
     """
     A reflex agent that keeps its side Pacman-free using Alpha-Beta pruning.
@@ -219,15 +219,15 @@ class DefensiveReflexAgent(CaptureAgent):
         """
         actions = game_state.get_legal_actions(self.index)
         
-        # Si no hay acciones legales, devuelve STOP
+        # There is not legal actions, return STOP
         if not actions:
             return Directions.STOP
 
-        # Evita quedarse quieto
+        # Avoid to stay quite
         if Directions.STOP in actions:
             actions.remove(Directions.STOP)
 
-        # Generar sucesores para cada acción
+        # Generate successors
         successors = []
         for action in actions:
             try:
@@ -235,19 +235,19 @@ class DefensiveReflexAgent(CaptureAgent):
                 successors.append((action, successor))
             except Exception as e:
                 print(f"Error al generar sucesor para la acción {action}: {e}")
-                continue  # Si ocurre un error, omite esta acción
+                continue  
 
-        # Evita repetir movimientos para no quedarse atascado
+        # Avoid repeat movements 
         current_pos = game_state.get_agent_state(self.index).get_position()
         self.previous_positions.append(current_pos)
         if len(self.previous_positions) > 6:
             self.previous_positions.pop(0)
 
-        # Evaluar las acciones y elegir la mejor
+        
         best_action = None
         best_value = -float('inf')
         for action, successor in successors:
-            value = self.evaluate(successor, action)  # Aquí es donde se usa evaluate
+            value = self.evaluate(successor, action)  
             next_pos = successor.get_agent_state(self.index).get_position()
             if next_pos in self.previous_positions:
                 value -= 50  # Penaliza quedarse en un ciclo
@@ -268,7 +268,7 @@ class DefensiveReflexAgent(CaptureAgent):
 
     def get_features(self, game_state):
         """
-        Define las características relevantes para el agente defensivo.
+        Define the relevant features
         """
         features = util.Counter()
         my_state = game_state.get_agent_state(self.index)
