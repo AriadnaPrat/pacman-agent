@@ -1,10 +1,10 @@
 # Team Information
 
-**Course:** Artificial Intelligence - Ariadna Prat
+**Course:** Artificial Intelligence 
 
-**Semester:** Semester 2, 2020
+**Semester:** Semester 1, 2024
 
-**Instructor:** _[name of your instructor]_
+**Instructor:** Sergio Calo
 
 **Team name:** _[replace this with team name in plan text]_
 
