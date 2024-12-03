@@ -15,6 +15,30 @@ from util import nearest_point
 
 import math
 
+class Node:
+    def __init__(self, state, index, parent=None, action=None):
+        self.state = state
+        self.index = index
+        self.parent = parent
+        self.action = action
+        self.children = []
+        self.visits = 0
+        self.value = 0
+        self.untried_actions = state.get_legal_actions(index)
+
+    def is_terminal(self):
+        return len(self.state.get_legal_actions(self.index)) == 0
+
+    def is_fully_expanded(self):
+        return len(self.untried_actions) == 0
+
+    def add_child(self, child):
+        self.children.append(child)
+        self.untried_actions.remove(child.action)
+
+    def best_child(self, exploration_weight=1.0):
+        return max(self.children, key=lambda c: c.value / c.visits + exploration_weight * math.sqrt(math.log(self.visits) / c.visits))
+
 #################
 # Team creation #
 #################
@@ -35,6 +59,7 @@ def create_team(first_index, second_index, is_red,
     any extra arguments, so you should make sure that the default
     behavior is what you want for the nightly contest.
     """
+    
     return [eval(first)(first_index), eval(second)(second_index)]
 
 
@@ -109,25 +134,23 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
   A reflex agent that seeks food. This is an agent
   we give you to get an idea of what an offensive agent might look like,
   but it is by no means the best or only way to build an offensive agent.
-  """
+    """
+    def __init__(self, index):
+        super().__init__(index)
+        self.return_to_base = False  
+        self.food_eaten_count = 0  
+        
+
     def choose_action(self, game_state):
-        """
-        Picks among the actions with the highest Q(s,a).
-        """
         actions = game_state.get_legal_actions(self.index)
-        food_left = len(self.get_food(game_state).as_list())
-       
-        # You can profile your evaluation time by uncommenting these lines
-        # start = time.time()
-        values = [self.evaluate(game_state, a, food_left) for a in actions]
-        # print 'eval time for agent %d: %.4f' % (self.index, time.time() - start)
 
-        max_value = max(values)
-        best_actions = [a for a, v in zip(actions, values) if v == max_value]
+    # Obtener la posición actual
+        my_pos = game_state.get_agent_state(self.index).get_position()
+        
 
-    
-        if food_left<= 2:
-            best_dist = 9999
+    # Si debe regresar a la base, calcula la acción para acercarse
+        if self.return_to_base:
+            best_dist = float('inf')
             best_action = None
             for action in actions:
                 successor = self.get_successor(game_state, action)
@@ -136,9 +159,42 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
                 if dist < best_dist:
                     best_action = action
                     best_dist = dist
+
+        # Si ya está en la base, cambia el estado para buscar comida
+            if my_pos == self.start:
+                self.return_to_base = False
             return best_action
 
-        return random.choice(best_actions)
+    # Si no está regresando, busca comida
+        food_list = self.get_food(game_state).as_list()
+        if len(food_list) > 0:
+            best_dist = float('inf')
+            best_action = None
+            for action in actions:
+                successor = self.get_successor(game_state, action)
+                pos2 = successor.get_agent_position(self.index)
+                dist = min([self.get_maze_distance(pos2, food) for food in food_list])
+                if dist < best_dist:
+                    best_action = action
+                    best_dist = dist
+
+        # Si come una bola de comida, activa el regreso
+            successor = self.get_successor(game_state, best_action)
+            if successor.get_agent_position(self.index) in food_list:
+                if self.food_eaten_count == 0:  
+                    self.start = (10, 7)
+                elif self.food_eaten_count == 1: 
+                    self.start = (25, 10)
+                else:
+                    self.start = (15, 7)
+                self.food_eaten_count += 1  # Incrementar el contador
+    #           self.start = (25, 10)  # Cambia la posición de inicio cada vez que come comida 15,7->  22,10   22,9   24,10  25,10
+                self.return_to_base = True
+            return best_action
+      
+           
+    # Si no hay comida, detente
+        return Directions.STOP
     
     def evaluate(self, game_state, action, food_left):
         """
@@ -153,51 +209,60 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
         features = util.Counter()
         successor = self.get_successor(game_state, action)
         food_list = self.get_food(successor).as_list()
-        features['successor_score'] = -len(food_list)  # self.getScore(successor)
+        my_state = successor.get_agent_state(self.index)
+        my_pos = my_state.get_position()
 
-        # Compute distance to the nearest food
+    # Característica: Comida restante
+        features['successor_score'] = -len(food_list)
 
-        if len(food_list) > 0:  # This should always be True,  but better safe than sorry
-            my_pos = successor.get_agent_state(self.index).get_position()
+    # Característica: Distancia a la comida más cercana
+        if len(food_list) > 0:
             min_distance = min([self.get_maze_distance(my_pos, food) for food in food_list])
             features['distance_to_food'] = min_distance
-            ###########
-           
-            ###########
-            my_state = successor.get_agent_state(self.index)
-            my_pos = my_state.get_position()
-            if food_left <= 19:
-                
-         #       print("\n  1  food_left=", food_left, "_old=",self.food_left_old)
-                features = util.Counter()
-                successor = self.get_successor(game_state, action)
 
-                # Computes distance to invaders we can see
-                enemies = [successor.get_agent_state(i) for i in self.get_opponents(successor)]
-                invaders = [a for a in enemies if a.is_pacman and a.get_position() is not None]
-                features['num_invaders'] = len(invaders)
-                if len(invaders) > 0:
-                    dists = [self.get_maze_distance(my_pos, a.get_position()) for a in invaders]
-                    features['invader_distance'] = min(dists)
-                
-                if action == Directions.STOP: 
-                    features['stop'] = 1
-                rev = Directions.REVERSE[game_state.get_agent_state(self.index).configuration.direction]
-                print("\n  1.1  action=", action)
-                if action == rev: 
-                    features['reverse'] = 1
-                    print("\n  1.2  action=", action)
+    # Nueva característica: Distancia a enemigos visibles
+        enemies = [successor.get_agent_state(i) for i in self.get_opponents(successor)]
+        visible_ghosts = [e for e in enemies if not e.is_pacman and e.get_position() is not None]
+        if visible_ghosts:
+            ghost_distances = [self.get_maze_distance(my_pos, ghost.get_position()) for ghost in visible_ghosts]
+            features['ghost_distance'] = min(ghost_distances)
+        else:
+            features['ghost_distance'] = 0
+
+    # Penalización por detenerse
+        if action == Directions.STOP:
+            features['stop'] = 1
+
+    # Penalización por ir hacia atrás
+        rev = Directions.REVERSE[game_state.get_agent_state(self.index).configuration.direction]
+        if action == rev:
+            features['reverse'] = 1
+
+    # Si queda poca comida, priorizar acercarse al inicio (zona segura)
+        if food_left <= 5:
+            features['distance_to_start'] = self.get_maze_distance(my_pos, self.start)
 
         return features
 
     def get_weights(self, game_state, action, food_left):
-        if food_left<= 19:
-        #    print("\n  2  food_left=", food_left, "_old=",self.food_left_old)
-            return {'num_invaders': -1000, 'on_defense': 100, 'invader_distance': -10, 'stop': -100, 'reverse': -2}
-        
-        return {'successor_score': 100, 'distance_to_food': -1}
+        if food_left <= 5:
+            return {
+                'successor_score': 100,
+                'distance_to_food': -1,
+                'ghost_distance':15,  # Evitar fantasmas
+                'distance_to_start': -2,  # Regresar al inicio
+                'stop': -100,
+                'reverse': -2
+            }
+        return {
+            'successor_score': 100,
+            'distance_to_food': -1,
+            'ghost_distance': 15,  # Evitar fantasmas
+            'stop': -100,
+            'reverse': -2
+        }
 
-
+#alpha-beta no funciona bien
 class DefensiveReflexAgent(CaptureAgent):
     """
     A reflex agent that keeps its side Pacman-free using Alpha-Beta pruning.
@@ -219,15 +284,15 @@ class DefensiveReflexAgent(CaptureAgent):
         """
         actions = game_state.get_legal_actions(self.index)
         
-        # There is not legal actions, return STOP
+        # Si no hay acciones legales, devuelve STOP
         if not actions:
             return Directions.STOP
 
-        # Avoid to stay quite
+        # Evita quedarse quieto
         if Directions.STOP in actions:
             actions.remove(Directions.STOP)
 
-        # Generate successors
+        # Generar sucesores para cada acción
         successors = []
         for action in actions:
             try:
@@ -235,19 +300,19 @@ class DefensiveReflexAgent(CaptureAgent):
                 successors.append((action, successor))
             except Exception as e:
                 print(f"Error al generar sucesor para la acción {action}: {e}")
-                continue  
+                continue  # Si ocurre un error, omite esta acción
 
-        # Avoid repeat movements 
+        # Evita repetir movimientos para no quedarse atascado
         current_pos = game_state.get_agent_state(self.index).get_position()
         self.previous_positions.append(current_pos)
         if len(self.previous_positions) > 6:
             self.previous_positions.pop(0)
 
-        
+        # Evaluar las acciones y elegir la mejor
         best_action = None
         best_value = -float('inf')
         for action, successor in successors:
-            value = self.evaluate(successor, action)  
+            value = self.evaluate(successor, action)  # Aquí es donde se usa evaluate
             next_pos = successor.get_agent_state(self.index).get_position()
             if next_pos in self.previous_positions:
                 value -= 50  # Penaliza quedarse en un ciclo
@@ -259,8 +324,8 @@ class DefensiveReflexAgent(CaptureAgent):
 
     def evaluate(self, game_state, action):
         """
-        Evalúa una acción combinando características y pesos.
-        Esta es la implementación del método evaluate para el agente defensivo.
+        Evaluates an action by combining features and weights.
+        This is the implementation of the evaluate method for the defensive agent.
         """
         features = self.get_features(game_state)
         weights = self.get_weights()
@@ -268,7 +333,7 @@ class DefensiveReflexAgent(CaptureAgent):
 
     def get_features(self, game_state):
         """
-        Define the relevant features
+        Defines the relevant features for the defensive agent.
         """
         features = util.Counter()
         my_state = game_state.get_agent_state(self.index)
@@ -300,7 +365,7 @@ class DefensiveReflexAgent(CaptureAgent):
 
     def get_weights(self):
         """
-        Asigna pesos a las características.
+        Assigns weights to the features.
         """
         return {
             'num_invaders': -1000,  # Penaliza los invasores
@@ -312,7 +377,7 @@ class DefensiveReflexAgent(CaptureAgent):
 
     def get_successor(self, game_state, action):
         """
-        Genera el estado sucesor después de realizar una acción.
+        Generates the successor state after taking an action.
         """
         successor = game_state.generate_successor(self.index, action)
         pos = successor.get_agent_state(self.index).get_position()
