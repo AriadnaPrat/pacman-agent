@@ -15,29 +15,6 @@ from util import nearest_point
 
 import math
 
-class Node:
-    def __init__(self, state, index, parent=None, action=None):
-        self.state = state
-        self.index = index
-        self.parent = parent
-        self.action = action
-        self.children = []
-        self.visits = 0
-        self.value = 0
-        self.untried_actions = state.get_legal_actions(index)
-
-    def is_terminal(self):
-        return len(self.state.get_legal_actions(self.index)) == 0
-
-    def is_fully_expanded(self):
-        return len(self.untried_actions) == 0
-
-    def add_child(self, child):
-        self.children.append(child)
-        self.untried_actions.remove(child.action)
-
-    def best_child(self, exploration_weight=1.0):
-        return max(self.children, key=lambda c: c.value / c.visits + exploration_weight * math.sqrt(math.log(self.visits) / c.visits))
 
 #################
 # Team creation #
